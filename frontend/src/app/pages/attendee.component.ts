@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService, IngestResult } from '../services/api.service';
 
@@ -22,23 +22,23 @@ import { ApiService, IngestResult } from '../services/api.service';
             Shareholder weight (0–1)
             <input type="number" min="0" max="1" step="0.1" [(ngModel)]="weight" />
           </label>
-          <button (click)="submit()" [disabled]="!text.trim() || busy">
-            {{ busy ? 'Sending…' : 'Submit' }}
+          <button (click)="submit()" [disabled]="!text.trim() || busy()">
+            {{ busy() ? 'Sending…' : 'Submit' }}
           </button>
         </div>
       </div>
 
-      @if (last) {
+      @if (last(); as l) {
         <div class="card">
           <div class="row">
-            <span class="badge" [class.hot]="last.is_new_cluster">
-              {{ last.is_new_cluster ? 'New topic' : 'Merged with existing topic' }}
+            <span class="badge" [class.hot]="l.is_new_cluster">
+              {{ l.is_new_cluster ? 'New topic' : 'Merged with existing topic' }}
             </span>
-            <span class="muted">cluster size: {{ last.cluster_size }}</span>
-            <span class="muted">similarity: {{ last.similarity }}</span>
+            <span class="muted">cluster size: {{ l.cluster_size }}</span>
+            <span class="muted">similarity: {{ l.similarity }}</span>
           </div>
           <p class="muted" style="margin:8px 0 0">
-            {{ last.is_new_cluster
+            {{ l.is_new_cluster
                 ? 'Nobody had asked this yet — a new topic was created.'
                 : 'This matched a question others already asked, so it was deduplicated.' }}
           </p>
@@ -50,8 +50,8 @@ import { ApiService, IngestResult } from '../services/api.service';
 export class AttendeeComponent implements OnInit {
   text = '';
   weight = 0.1;
-  busy = false;
-  last: IngestResult | null = null;
+  readonly busy = signal(false);
+  readonly last = signal<IngestResult | null>(null);
   private attendeeId = 'attendee-' + Math.floor(Math.random() * 1e6);
 
   constructor(private api: ApiService) {}
@@ -61,15 +61,15 @@ export class AttendeeComponent implements OnInit {
   }
 
   submit(): void {
-    this.busy = true;
+    this.busy.set(true);
     this.api.submitQuestion(this.text.trim(), this.attendeeId, this.weight).subscribe({
       next: (res) => {
-        this.last = res;
+        this.last.set(res);
         this.text = '';
-        this.busy = false;
+        this.busy.set(false);
       },
       error: () => {
-        this.busy = false;
+        this.busy.set(false);
         alert('Could not submit — the server may be waking up (free tier). Try again in a moment.');
       },
     });
