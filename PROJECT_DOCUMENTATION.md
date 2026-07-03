@@ -88,12 +88,17 @@ real-time question stream. AGM Sentinel solves this specific, high-value problem
 - Real-time question ingestion, semantic clustering, ranking, and RAG drafting.
 - JWT-based role separation (attendee vs. moderator).
 - Live moderator board over STOMP/WebSocket.
+- **Moderator Setup page**: upload the annual report (indexed into RAG at runtime) and a
+  question bank (bulk-ingested and clustered).
+- **Cited answers**: each draft lists its sources as **clickable links that open the source
+  PDF at the cited page**.
 - Free-tier cloud deployment.
 
 **Out of scope (future work)**
 - Full shareholder identity federation (OAuth2/MFA) — stubbed via demo JWT.
 - Horizontal auto-scaling and Kafka-grade throughput (Redis Streams path included as the
   production-scale option).
+- Pixel-exact in-PDF highlighting of a cited chunk (native PDF viewers jump to a page only).
 - Multi-tenant company onboarding UI.
 
 ---
@@ -102,7 +107,7 @@ real-time question stream. AGM Sentinel solves this specific, high-value problem
 
 | Layer | Technology | Rationale |
 |---|---|---|
-| Frontend | **Angular 19** (standalone components), STOMP/SockJS | Real-time board UI; core competency |
+| Frontend | **Angular 22** (standalone, **zoneless**, signals), STOMP/SockJS | Real-time board UI; current best-practice change detection |
 | Core API | **Spring Boot 3 / Java 17** | Enterprise auth, WebSocket fan-out, transactional store |
 | AI Service | **Python 3.11 · FastAPI · LangChain** | The entire LLM/embeddings ecosystem lives in Python |
 | Embeddings | **sentence-transformers** `all-MiniLM-L6-v2` (local) | Runs in-process; zero API cost |
@@ -161,16 +166,20 @@ each service single-responsibility and independently deployable.
 ### 7.1 Frontend (Angular) — `frontend/`
 | File | Responsibility |
 |---|---|
+| `app.config.ts` | **Zoneless** change detection, router, HttpClient providers |
 | `pages/attendee.component.ts` | Question submission; shows new-topic vs. merged result |
-| `pages/moderator.component.ts` | Live ranked board; one-click draft generation |
-| `services/api.service.ts` | REST calls (auth, submit, board, draft) |
-| `services/board.service.ts` | STOMP/SockJS subscription to `/topic/board` |
+| `pages/moderator.component.ts` | Live ranked board; draft generation; **citation links** |
+| `pages/admin.component.ts` | **Setup**: upload annual report + question bank |
+| `services/api.service.ts` | REST calls + `parseCitation()` (builds page-anchored PDF links) |
+| `services/board.service.ts` | STOMP/SockJS subscription to `/topic/board` (signals) |
 
 ### 7.2 Backend (Spring Boot) — `backend/`
 | Class | Responsibility |
 |---|---|
-| `QuestionService` | Orchestrates persist → AI cluster → broadcast pipeline |
-| `AiClient` | WebClient wrapper over the Python AI service |
+| `QuestionService` | Orchestrates persist → AI cluster → broadcast; bulk ingest |
+| `AiClient` | WebClient over the Python service (ingest, draft, upload, fetch PDF) |
+| `controller/AdminController` | Upload annual report + question bank (moderator) |
+| `controller/SourceController` | Serve source PDFs publicly (citation-link target) |
 | `WebSocketConfig` | STOMP broker on `/topic`, endpoint `/ws` |
 | `BoardRefreshScheduler` | Periodic board re-broadcast + keep-warm ping |
 | `SecurityConfig` / `JwtService` / `JwtAuthFilter` | JWT auth + role rules |
@@ -179,10 +188,10 @@ each service single-responsibility and independently deployable.
 ### 7.3 AI Service (Python) — `ai-service/`
 | Module | Responsibility |
 |---|---|
-| `main.py` | FastAPI endpoints (`/ingest`, `/draft`, `/clusters`, `/health`) |
+| `main.py` | FastAPI endpoints (ingest, draft, clusters, knowledge upload/serve) |
 | `embeddings.py` | Local sentence-transformer embeddings (LangChain-compatible) |
 | `clustering.py` | **Online nearest-centroid clustering** (core algorithm) |
-| `rag.py` | LangChain RAG chain over the annual report (FAISS) |
+| `rag.py` | FAISS knowledge base + LangChain draft chain + runtime PDF ingest/serve |
 | `llm.py` | Provider factory — Groq / Gemini / Azure, one-line swap |
 | `consumer.py` | Optional Redis Streams worker (production-scale ingest) |
 
@@ -225,14 +234,22 @@ askers hold.
 To keep draft answers factual, the system uses **Retrieval-Augmented Generation** over the
 company's annual report:
 
-1. **Ingest (startup):** each PDF in `ai-service/knowledge/` is split into ~1000-char chunks,
-   embedded locally, and indexed in **FAISS**.
+1. **Ingest:** PDFs are split into ~1000-char chunks, embedded locally, and indexed in **FAISS**.
+   This happens at **startup** (from `ai-service/knowledge/`) *and* at **runtime** when a
+   moderator uploads a report via the Setup page (`add_pdf` extends the live index).
 2. **Retrieve:** for a cluster's representative question, fetch the top-k (default 4) most
    similar chunks.
 3. **Augment:** inject those chunks as context into a strict LangChain prompt that forbids
    inventing figures and requires escalation if the answer isn't in the report.
 4. **Generate:** a free LLM (Groq/Gemini) produces a concise (<120-word) answer.
-5. **Cite:** each answer returns source citations (`filename p.N` + snippet).
+5. **Cite:** each answer returns source citations (`filename p.N` + snippet). The draft **and its
+   citations are cached on the cluster**, so they ride along on the next board broadcast and
+   appear for every moderator.
+
+**Citation links:** in the UI each source is a clickable link. `parseCitation()` turns
+`"report.pdf p.3"` into `…/api/source/report.pdf#page=3`; the browser's PDF viewer opens the
+document at that page. The backend `SourceController` proxies the PDF from the AI service over a
+**public** route (a new tab carries no JWT), with path-traversal guarded by basenaming.
 
 Because the LLM is accessed through LangChain's provider abstraction (`llm.py`), switching to
 **Azure OpenAI** later is a one-line change — the RAG logic is untouched.
@@ -278,8 +295,12 @@ lookups at scale.
 |---|---|---|---|
 | POST | `/api/auth/login` | public | Issue a demo JWT `{username, role}` |
 | POST | `/api/questions` | attendee/mod | Submit a question → returns cluster assignment |
-| GET | `/api/clusters?limit=N` | moderator | Current ranked board |
+| GET | `/api/clusters?limit=N` | moderator | Current ranked board (includes citations) |
 | POST | `/api/clusters/{id}/draft` | moderator | Trigger RAG draft for a cluster |
+| GET | `/api/admin/knowledge` | moderator | Knowledge-base status (sources, chunk count) |
+| POST | `/api/admin/knowledge` | moderator | Upload annual-report PDF (indexed into RAG) |
+| POST | `/api/admin/question-bank` | moderator | Upload question bank (bulk-ingested) |
+| GET | `/api/source/{filename}` | public | Serve a source PDF (citation-link target) |
 | WS | `/ws` → subscribe `/topic/board` | — | Live board push |
 
 ### Python AI service
@@ -287,8 +308,11 @@ lookups at scale.
 |---|---|---|
 | GET | `/health` | Liveness / keep-warm |
 | POST | `/ingest` | Embed + cluster one question |
-| POST | `/draft` | RAG draft for a cluster |
+| POST | `/draft` | RAG draft for a cluster (returns answer + citations) |
 | GET | `/clusters?limit=N` | Ranked cluster board |
+| GET | `/knowledge/status` | Indexed sources + chunk count |
+| POST | `/knowledge/upload` | Index an uploaded PDF at runtime |
+| GET | `/knowledge/files/{filename}` | Serve a source PDF |
 
 **Example — deduplication in action**
 ```bash
@@ -310,13 +334,25 @@ GET  /clusters
 5. Spring Boot broadcasts the refreshed ranked board to `/topic/board`.
 6. All subscribed moderator clients update in real time over WebSocket.
 
+**Setup flows (moderator):**
+7. **Upload annual report** → backend forwards the PDF to the AI service, which chunks, embeds,
+   and adds it to the live FAISS index (no restart).
+8. **Upload question bank** → backend splits the file into lines and bulk-ingests each through the
+   clustering pipeline, broadcasting the board once at the end.
+9. **Click a citation** → opens `/api/source/{file}#page=N` in a new tab; the backend proxies the
+   PDF and the browser jumps to the cited page.
+
+> Full step-by-step sequence diagrams for every flow are in [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ---
 
 ## 13. Security Design
 
 - **Stateless JWT auth** (JJWT, HMAC-SHA) with role claims.
-- **Role-based access:** attendees may submit questions; only **moderators** may read the board
-  or trigger drafts (`SecurityConfig`).
+- **Role-based access:** attendees may submit questions; only **moderators** may read the board,
+  trigger drafts, or use the Setup uploads (`/api/admin/**`). The `/api/source/**` PDF route is
+  intentionally **public** (opened in a new browser tab, which sends no JWT); path traversal is
+  blocked by basenaming the filename.
 - **CORS** restricted (configurable to the Vercel domain in production).
 - **CSRF disabled** (stateless API), **sessions stateless**.
 - **Input validation** via Bean Validation (`@NotBlank`, size limits) on submissions.
@@ -345,18 +381,27 @@ A `docker-compose.yml` runs the entire system locally with one command (requires
 
 ## 15. Build & Verification Results
 
-All three services were built and verified locally:
+All three services were built, run, and verified locally end to end:
 
 | Service | Command | Result |
 |---|---|---|
-| Backend (Spring Boot) | `mvn clean package` | ✅ `backend-1.0.0.jar` (69 MB) produced |
-| Frontend (Angular) | `npm run build` | ✅ Production bundle 335 KB (89 KB gzipped) |
-| AI service (Python) | `python -m py_compile app/*.py` | ✅ All modules pass |
+| Backend (Spring Boot) | `mvn clean package` | ✅ `backend-1.0.0.jar` (~72 MB) produced |
+| Frontend (Angular 22) | `npm run build` | ✅ Production bundle ~366 KB (98 KB gzipped) |
+| AI service (Python) | venv install + `py_compile` | ✅ All modules import & compile |
 
-Issues found and fixed during the build:
+End-to-end runtime verification (all three services live):
+- Question submission → **semantic dedup** confirmed (paraphrases merged into one cluster).
+- Question-bank upload → `{"received":5,"ingested":5}`.
+- Annual-report upload → indexed into FAISS at runtime (`chunks_indexed` increased).
+- Draft answer → grounded response with **4 citations** to specific report pages.
+- Citation link → `/api/source/...pdf` returns a valid PDF (`%PDF-1.4`, `application/pdf`, 200).
+
+Issues found and fixed during build/upgrade:
 - Aligned `pom.xml` to **Java 17** (matching the installed JDK).
-- Fixed a strict-TypeScript header typing error in `api.service.ts`.
-- Declared `@stomp/stompjs` and `sockjs-client` as allowed CommonJS deps to clean the build.
+- Upgraded the frontend to **Angular 22** (zoneless + signals); required **Node ≥ 24.15**.
+- Fixed a strict-TypeScript typing error and a `sockjs-client` `global` shim (blank-screen bug).
+- Local run uses an embedded **H2** profile (no Postgres) and a **keyless** AI service
+  (clustering works without an LLM key; only drafting needs one).
 
 ---
 
@@ -368,7 +413,9 @@ Issues found and fixed during the build:
 - **Kafka** ingest path for true 10k+/sec throughput and replay.
 - **Multi-language** question support (multilingual embedding model).
 - **Analytics dashboard** — post-meeting report of top concerns and answer coverage.
-- **Admin UI** to upload the annual report and tune the clustering threshold live.
+- **PDF.js viewer** with exact in-page chunk highlighting (beyond page-level jump).
+- **De-duplicate report re-uploads** (currently re-uploading the same PDF doubles its chunks).
+- **Tune the clustering threshold** live from the Setup page.
 
 ---
 
@@ -384,5 +431,10 @@ Azure OpenAI with only configuration changes.
 
 ---
 
-*Document generated for the AGM Sentinel project. See `README.md` for a quick overview and
-`DEPLOY.md` for deployment steps.*
+**Related documents**
+- [ARCHITECTURE.md](ARCHITECTURE.md) — how it works, with per-flow sequence diagrams
+- [RUN_LOCAL.md](RUN_LOCAL.md) — run it locally (exact commands)
+- [DEPLOY.md](DEPLOY.md) — free-tier deployment
+- [README.md](README.md) — quick overview
+
+*Document reflects the current codebase, including the Setup uploads and cited-answer features.*
