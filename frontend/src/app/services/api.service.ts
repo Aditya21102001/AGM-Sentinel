@@ -37,7 +37,7 @@ export class ApiService {
     this.token = token;
   }
 
-  private authHeaders() {
+  private authHeaders(): Record<string, string> {
     return this.token ? { Authorization: `Bearer ${this.token}` } : {};
   }
 
