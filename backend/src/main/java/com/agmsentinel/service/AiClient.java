@@ -2,7 +2,11 @@ package com.agmsentinel.service;
 
 import com.agmsentinel.dto.Dtos.*;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
@@ -40,6 +44,43 @@ public class AiClient {
                 .retrieve()
                 .bodyToMono(DraftResult.class)
                 .timeout(Duration.ofSeconds(60))
+                .block();
+    }
+
+    /** Forward an uploaded annual-report PDF to the AI service for runtime RAG indexing. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> uploadKnowledge(String filename, byte[] bytes) {
+        MultipartBodyBuilder builder = new MultipartBodyBuilder();
+        builder.part("file", new ByteArrayResource(bytes) {
+            @Override
+            public String getFilename() {
+                return filename;   // required so the AI service sees a .pdf filename
+            }
+        }).contentType(MediaType.APPLICATION_PDF);
+
+        return web.post().uri("/knowledge/upload")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(BodyInserters.fromMultipartData(builder.build()))
+                .retrieve()
+                .bodyToMono(Map.class)
+                .timeout(Duration.ofSeconds(120))   // embedding a full report takes a moment
+                .block();
+    }
+
+    /** Fetch the raw bytes of an indexed source PDF (proxied to the browser for citation links). */
+    public byte[] fetchKnowledgeFile(String filename) {
+        return web.get().uri("/knowledge/files/{name}", filename)
+                .retrieve()
+                .bodyToMono(byte[].class)
+                .timeout(Duration.ofSeconds(30))
+                .block();
+    }
+
+    public Map<String, Object> knowledgeStatus() {
+        return web.get().uri("/knowledge/status")
+                .retrieve()
+                .bodyToMono(Map.class)
+                .timeout(Duration.ofSeconds(15))
                 .block();
     }
 

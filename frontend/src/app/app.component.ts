@@ -10,6 +10,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
       <strong style="color:var(--accent)">🛡️ AGM Sentinel</strong>
       <a routerLink="/ask" routerLinkActive="active">Ask a question</a>
       <a routerLink="/board" routerLinkActive="active">Moderator board</a>
+      <a routerLink="/setup" routerLinkActive="active">Setup</a>
     </nav>
     <router-outlet></router-outlet>
   `,

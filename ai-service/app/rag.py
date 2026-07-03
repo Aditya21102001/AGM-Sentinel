@@ -39,18 +39,25 @@ class KnowledgeBase:
     def __init__(self):
         self._store: FAISS | None = None
         self._chain = None
+        self._sources: set[str] = set()   # filenames currently indexed
+        self._chunk_count = 0
+        self._placeholder_only = False     # True when only the "no report" fallback is loaded
 
     def load(self) -> None:
         docs = self._load_documents()
         embeddings = get_embeddings()
         if docs:
             self._store = FAISS.from_documents(docs, embeddings)
+            self._chunk_count = len(docs)
+            self._placeholder_only = False
         else:
             # Empty KB fallback so the service still boots without a PDF present.
             self._store = FAISS.from_documents(
                 [Document(page_content="No annual report loaded.", metadata={"source": "none"})],
                 embeddings,
             )
+            self._chunk_count = 0
+            self._placeholder_only = True
         # Note: the LLM chain is built lazily (see _get_chain) so the service boots and can
         # embed/cluster WITHOUT an LLM API key. Only /draft needs the key.
 
@@ -63,19 +70,60 @@ class KnowledgeBase:
         docs: list[Document] = []
         if not _KB_DIR.exists():
             return docs
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
         for pdf in _KB_DIR.glob("*.pdf"):
             reader = PdfReader(str(pdf))
-            for page_no, page in enumerate(reader.pages, start=1):
-                text = (page.extract_text() or "").strip()
-                if not text:
-                    continue
-                for chunk in splitter.split_text(text):
-                    docs.append(Document(
-                        page_content=chunk,
-                        metadata={"source": f"{pdf.name} p.{page_no}"},
-                    ))
+            self._sources.add(pdf.name)
+            docs.extend(self._docs_from_reader(reader, pdf.name))
         return docs
+
+    def _docs_from_reader(self, reader: PdfReader, source_name: str) -> list[Document]:
+        """Split every page of a PDF into embeddable, source-tagged chunks."""
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+        docs: list[Document] = []
+        for page_no, page in enumerate(reader.pages, start=1):
+            text = (page.extract_text() or "").strip()
+            if not text:
+                continue
+            for chunk in splitter.split_text(text):
+                docs.append(Document(
+                    page_content=chunk,
+                    metadata={"source": f"{source_name} p.{page_no}"},
+                ))
+        return docs
+
+    def add_pdf(self, filename: str, data: bytes, persist: bool = True) -> int:
+        """Ingest an uploaded annual-report PDF into the live FAISS index at runtime.
+
+        Returns the number of chunks indexed. If the KB currently holds only the empty
+        placeholder, we rebuild fresh so the placeholder can't pollute retrieval.
+        """
+        import io
+        reader = PdfReader(io.BytesIO(data))
+        docs = self._docs_from_reader(reader, filename)
+        if not docs:
+            return 0
+
+        embeddings = get_embeddings()
+        if self._store is None or self._placeholder_only:
+            self._store = FAISS.from_documents(docs, embeddings)
+            self._chunk_count = len(docs)
+            self._placeholder_only = False
+        else:
+            self._store.add_documents(docs)
+            self._chunk_count += len(docs)
+
+        self._sources.add(filename)
+        if persist:
+            _KB_DIR.mkdir(parents=True, exist_ok=True)
+            (_KB_DIR / filename).write_bytes(data)
+        return len(docs)
+
+    def status(self) -> dict:
+        return {
+            "sources": sorted(self._sources),
+            "chunks_indexed": self._chunk_count,
+            "ready": bool(self._sources),
+        }
 
     def draft(self, cluster_id: str, question: str, k: int = 4) -> DraftResponse:
         assert self._store is not None, "KB not loaded"
@@ -87,6 +135,13 @@ class KnowledgeBase:
             for d in hits
         ]
         return DraftResponse(cluster_id=cluster_id, answer=answer.strip(), citations=citations)
+
+
+def knowledge_file_path(filename: str) -> Path | None:
+    """Resolve an indexed PDF by name, guarding against path traversal. None if absent."""
+    safe = os.path.basename(filename)          # strip any directory components
+    path = _KB_DIR / safe
+    return path if path.is_file() else None
 
 
 _kb: KnowledgeBase | None = None

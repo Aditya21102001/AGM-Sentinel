@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit, signal } from '@angular/core';
-import { ApiService, ClusterView } from '../services/api.service';
+import { ApiService, ClusterView, parseCitation } from '../services/api.service';
 import { BoardService } from '../services/board.service';
 
 @Component({
@@ -34,6 +34,21 @@ import { BoardService } from '../services/board.service';
           </div>
           @if (c.draft) {
             <div class="draft">{{ c.draft }}</div>
+            @if (c.citations.length) {
+              <div class="cite">
+                <strong>Sources</strong> (from the annual report — click to open at the page):
+                <ul style="margin:6px 0 0; padding-left:18px">
+                  @for (cit of c.citations; track cit.source) {
+                    <li>
+                      <a [href]="link(cit.source).url" target="_blank" rel="noopener"
+                         [title]="cit.snippet">
+                        {{ cit.source }}
+                      </a>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
           }
         </div>
       }
@@ -52,6 +67,11 @@ export class ModeratorComponent implements OnInit, OnDestroy {
       this.api.getBoard().subscribe((b) => this.board.board.set(b)); // initial snapshot
       this.board.connect();                                          // then live pushes
     });
+  }
+
+  /** Build the page-anchored PDF link for a citation source string. */
+  link(source: string) {
+    return parseCitation(source);
   }
 
   draft(c: ClusterView): void {

@@ -51,6 +51,30 @@ public class QuestionService {
         return result;
     }
 
+    /**
+     * Bulk-ingest an uploaded question bank. Each line is clustered like a live question,
+     * but we broadcast the board only ONCE at the end instead of per line.
+     * Returns the number of questions ingested.
+     */
+    public int submitBulk(List<String> texts, float weight) {
+        int ingested = 0;
+        for (String text : texts) {
+            String clean = text.trim();
+            if (clean.isEmpty()) continue;
+            Question q = questions.save(new Question(clean, "question-bank", weight));
+            try {
+                IngestResult result = ai.ingest(q.getId().toString(), clean, "question-bank", weight);
+                q.setClusterId(UUID.fromString(result.cluster_id()));
+                questions.save(q);
+                ingested++;
+            } catch (Exception ignored) {
+                // Skip a bad line rather than aborting the whole upload.
+            }
+        }
+        broadcastBoard();
+        return ingested;
+    }
+
     /** Push the current ranked, deduplicated board to all subscribed moderators. */
     public void broadcastBoard() {
         List<ClusterView> board = ai.clusters(20);

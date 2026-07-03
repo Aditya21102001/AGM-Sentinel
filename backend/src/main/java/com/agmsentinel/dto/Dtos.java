@@ -34,7 +34,8 @@ public final class Dtos {
             String representative_question,
             int size,
             double priority_score,
-            String draft
+            String draft,
+            List<Citation> citations
     ) { }
 
     // ---- broadcast to moderators over WebSocket ------------------------------

@@ -32,6 +32,7 @@ class Cluster:
     size: int = 1
     weight_sum: float = 0.0             # sum of shareholder weights (for ranking)
     draft: str | None = None            # cached RAG draft answer, once generated
+    citations: list | None = None       # [{source, snippet}] backing the draft
 
     @property
     def priority_score(self) -> float:

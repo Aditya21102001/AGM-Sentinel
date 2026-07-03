@@ -29,8 +29,10 @@ public class SecurityConfig {
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**", "/ws/**", "/actuator/health", "/health").permitAll()
+                .requestMatchers("/api/source/**").permitAll()   // PDF opened in a new tab (no auth header)
                 .requestMatchers("/api/questions/**").hasAnyRole("ATTENDEE", "MODERATOR")
                 .requestMatchers("/api/clusters/**").hasRole("MODERATOR")
+                .requestMatchers("/api/admin/**").hasRole("MODERATOR")
                 .anyRequest().authenticated())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

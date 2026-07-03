@@ -12,12 +12,14 @@ to enable it. Both feed the same OnlineClusterer.
 """
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+
+from fastapi.responses import FileResponse
 
 from .clustering import get_clusterer
 from .embeddings import get_embeddings
-from .rag import get_kb
+from .rag import get_kb, knowledge_file_path
 from .schemas import (
     ClusterView, DraftRequest, DraftResponse, IngestRequest, IngestResponse,
 )
@@ -63,11 +65,42 @@ def ingest(req: IngestRequest) -> IngestResponse:
 @app.post("/draft", response_model=DraftResponse)
 def draft(req: DraftRequest) -> DraftResponse:
     result = get_kb().draft(req.cluster_id, req.representative_question)
-    # Cache the draft on the cluster so it rides along on the next /clusters board push.
+    # Cache the draft + its citations on the cluster so they ride along on the board push.
     cluster = get_clusterer().get(req.cluster_id)
     if cluster is not None:
         cluster.draft = result.answer
+        cluster.citations = [c.model_dump() for c in result.citations]
     return result
+
+
+@app.get("/knowledge/status")
+def knowledge_status() -> dict:
+    return get_kb().status()
+
+
+@app.get("/knowledge/files/{filename}")
+def knowledge_file(filename: str) -> FileResponse:
+    """Serve an indexed source PDF so the UI can open it (at a page anchor) from a citation."""
+    path = knowledge_file_path(filename)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Source document not found.")
+    # inline so the browser's PDF viewer opens it (and honours #page=N) instead of downloading.
+    return FileResponse(
+        path, media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{path.name}"'},
+    )
+
+
+@app.post("/knowledge/upload")
+async def knowledge_upload(file: UploadFile = File(...)) -> dict:
+    """Ingest an uploaded annual-report PDF into the RAG knowledge base at runtime."""
+    if not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    data = await file.read()
+    chunks = get_kb().add_pdf(file.filename, data)
+    if chunks == 0:
+        raise HTTPException(status_code=422, detail="No extractable text found in the PDF.")
+    return {"filename": file.filename, "chunks_indexed": chunks, **get_kb().status()}
 
 
 @app.get("/clusters", response_model=list[ClusterView])
@@ -79,6 +112,7 @@ def clusters(limit: int = 20) -> list[ClusterView]:
             size=c.size,
             priority_score=round(c.priority_score, 4),
             draft=c.draft,
+            citations=c.citations or [],
         )
         for c in get_clusterer().top(limit)
     ]

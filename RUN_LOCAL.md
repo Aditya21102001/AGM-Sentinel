@@ -1,0 +1,195 @@
+# Running AGM Sentinel Locally
+
+Exact commands to run the whole project on your machine (Windows). This is the setup we
+verified working: **embedded H2** (no Postgres needed), **keyless AI service** (clustering
+works without any API key), and the **Angular 22** dev server.
+
+> Shells: commands below are **PowerShell** (your default). Where a Git-Bash form differs,
+> it's noted. Run each long-lived service in **its own terminal**.
+
+---
+
+## 0. Prerequisites (already installed on this machine)
+
+| Tool | Version needed | You have |
+|---|---|---|
+| **Java (JDK)** | 17+ | 17 ✅ |
+| **Maven** | 3.9+ | 3.9.10 ✅ |
+| **Python** | 3.10+ | 3.10.7 ✅ |
+| **Node.js** | **≥ 24.15** (Angular 22 CLI) | 24.18 ✅ |
+| **npm** | 10+ | ✅ |
+
+No Docker, no Postgres, no Redis required for local run.
+
+---
+
+## 1. One-time setup
+
+Do this **once**. If you've already done it this session, skip to §2.
+
+### 1a. AI service (Python venv + dependencies)
+```powershell
+cd f:\UniquePersonalProject\ai-service
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+*(Git Bash: `./.venv/Scripts/python.exe -m pip install -r requirements.txt`)*
+
+### 1b. Generate the demo annual-report PDF (for grounded draft answers)
+```powershell
+cd f:\UniquePersonalProject\ai-service
+.\.venv\Scripts\python.exe -m pip install reportlab
+.\.venv\Scripts\python.exe scripts\generate_report.py
+```
+This writes `ai-service\knowledge\nimbus-annual-report-2024.pdf`. *(Already generated — only
+re-run if you delete it.)*
+
+### 1c. Backend (build the runnable jar)
+```powershell
+cd f:\UniquePersonalProject\backend
+mvn clean package -DskipTests
+```
+Produces `backend\target\backend-1.0.0.jar`.
+
+### 1d. Frontend (install dependencies)
+```powershell
+cd f:\UniquePersonalProject\frontend
+npm install
+```
+
+---
+
+## 2. Run the three services (3 terminals)
+
+Start them **in this order**. Keep each terminal open.
+
+### Terminal 1 — AI service (port 8000)
+```powershell
+cd f:\UniquePersonalProject\ai-service
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+First start downloads the embedding model (~90 MB) once, then caches it.
+Wait until you see `Application startup complete`.
+
+**Verify:**
+```powershell
+curl http://127.0.0.1:8000/health
+# {"status":"ok"}
+```
+
+### Terminal 2 — Backend (port 8080, H2 in-memory DB)
+```powershell
+cd f:\UniquePersonalProject\backend
+java -jar target\backend-1.0.0.jar --spring.profiles.active=local
+```
+The `local` profile uses embedded **H2** (no Postgres) and points at the AI service on :8000.
+
+**Verify:**
+```powershell
+curl http://127.0.0.1:8080/actuator/health
+# {"status":"UP"}
+```
+
+### Terminal 3 — Frontend (port 4200)
+```powershell
+cd f:\UniquePersonalProject\frontend
+npm start
+```
+Wait for `Application bundle generation complete`, then open **http://localhost:4200**.
+
+---
+
+## 3. Try it out
+
+1. Open **http://localhost:4200** → **Ask a question** tab.
+2. Submit a few paraphrases of the same question, e.g.
+   *"When will the dividend be paid?"* and *"What is the dividend payment date?"*
+3. Open the **Moderator board** tab → the paraphrases collapse into **one cluster** whose
+   count climbs. Different questions form new topics. The board updates live over WebSocket.
+
+### Seed the board with ~25 realistic questions (optional, great for a demo)
+With all three services running:
+```powershell
+cd f:\UniquePersonalProject\ai-service
+.\.venv\Scripts\python.exe scripts\seed_questions.py http://127.0.0.1:8080
+```
+This fires deliberately-overlapping AGM questions so the board fills with ranked, deduplicated
+clusters.
+
+### End-to-end check via curl (no browser)
+```powershell
+# login as attendee -> get JWT, submit a question
+$tok = (curl -s -X POST http://127.0.0.1:8080/api/auth/login -H "Content-Type: application/json" -d '{\"username\":\"a1\",\"role\":\"ATTENDEE\"}' | ConvertFrom-Json).token
+curl -X POST http://127.0.0.1:8080/api/questions -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d '{\"text\":\"When is the dividend paid?\",\"attendeeId\":\"a1\",\"weight\":0.3}'
+```
+
+---
+
+## 4. Enable AI draft answers (optional — needs a free Groq key)
+
+Clustering, dedup, ranking and the live board **all work with no key**. Only the
+**"Draft answer"** button (RAG over the annual report) needs an LLM.
+
+1. Get a **free** key at https://console.groq.com (email login, no credit card).
+2. Restart the **AI service** (Terminal 1) with the key set:
+
+```powershell
+cd f:\UniquePersonalProject\ai-service
+$env:LLM_PROVIDER = "groq"
+$env:GROQ_API_KEY = "gsk_your_key_here"
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+*(Git Bash: `LLM_PROVIDER=groq GROQ_API_KEY=gsk_... ./.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000`)*
+
+Now **Draft answer** on the moderator board returns a grounded, cited answer from the PDF.
+
+---
+
+## 5. Ports & URLs
+
+| Service | URL |
+|---|---|
+| Frontend (Angular) | http://localhost:4200 |
+| Backend (Spring Boot) | http://localhost:8080 |
+| Backend health | http://localhost:8080/actuator/health |
+| H2 DB console | http://localhost:8080/h2-console (JDBC URL: `jdbc:h2:mem:sentinel`) |
+| AI service (FastAPI) | http://127.0.0.1:8000 |
+| AI service docs | http://127.0.0.1:8000/docs |
+
+---
+
+## 6. Stopping
+
+Press **Ctrl+C** in each of the three terminals. Because the DB is in-memory H2, all data is
+cleared on backend restart (intentional for local dev).
+
+---
+
+## 7. Troubleshooting (issues we actually hit)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Browser shows only a **dark blue screen** | `sockjs-client` needs a `global` that browsers lack | Already fixed via a shim in `index.html` (`window.global = window`). Hard-refresh `Ctrl+Shift+R`. |
+| Angular CLI: *"requires Node ≥24.15"* | Old Node | Use Node 24.18 (installed). `node --version` to confirm. |
+| Pylance: *"Import numpy/redis/langchain could not be resolved"* | VS Code using global Python, not the venv | `.vscode\settings.json` pins the venv; or `Ctrl+Shift+P → Python: Select Interpreter → ai-service\.venv`. |
+| Editor: *"@angular/forms could not be found"* | Stale Angular Language Service after reinstall | `Ctrl+Shift+P → Developer: Reload Window`. Build is the source of truth (it compiles). |
+| Backend fails to connect to DB | Forgot the profile | Must start with `--spring.profiles.active=local` (uses H2). |
+| **Draft answer** fails | No LLM key | See §4 — set `GROQ_API_KEY`. Clustering still works without it. |
+| Backend can't reach AI service | AI service not started / wrong order | Start Terminal 1 (AI) before Terminal 2 (backend); both must be up. |
+
+---
+
+## Quick reference — copy/paste to start everything
+
+```powershell
+# Terminal 1
+cd f:\UniquePersonalProject\ai-service; .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# Terminal 2
+cd f:\UniquePersonalProject\backend; java -jar target\backend-1.0.0.jar --spring.profiles.active=local
+
+# Terminal 3
+cd f:\UniquePersonalProject\frontend; npm start
+```
+Then open **http://localhost:4200**.

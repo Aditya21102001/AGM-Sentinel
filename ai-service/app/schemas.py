@@ -41,3 +41,4 @@ class ClusterView(BaseModel):
     size: int
     priority_score: float
     draft: Optional[str] = None
+    citations: list[Citation] = []
