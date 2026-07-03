@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: agm-sentinel-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/sentinel}
+    username: ${SPRING_DATASOURCE_USERNAME:sentinel}
+    password: ${SPRING_DATASOURCE_PASSWORD:sentinel}
+  jpa:
+    hibernate:
+      ddl-auto: update          # tables also created by ai-service/db/init.sql; update is safe
+    properties:
+      hibernate:
+        format_sql: false
+    open-in-view: false
+
+server:
+  port: ${PORT:8080}
+
+# Python AI service base URL (Docker: http://ai-service:8000 ; HF Spaces URL in prod)
+ai:
+  service:
+    url: ${AI_SERVICE_URL:http://localhost:8000}
+
+jwt:
+  secret: ${JWT_SECRET:change-me-to-a-long-random-string-in-prod-please}
+  ttl-seconds: 28800
+
+board:
+  refresh-ms: 10000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
