@@ -51,10 +51,13 @@ class KnowledgeBase:
                 [Document(page_content="No annual report loaded.", metadata={"source": "none"})],
                 embeddings,
             )
-        self._chain = (self._PROMPT_pipe())
+        # Note: the LLM chain is built lazily (see _get_chain) so the service boots and can
+        # embed/cluster WITHOUT an LLM API key. Only /draft needs the key.
 
-    def _PROMPT_pipe(self):
-        return _PROMPT | get_llm() | StrOutputParser()
+    def _get_chain(self):
+        if self._chain is None:
+            self._chain = _PROMPT | get_llm() | StrOutputParser()
+        return self._chain
 
     def _load_documents(self) -> list[Document]:
         docs: list[Document] = []
@@ -75,10 +78,10 @@ class KnowledgeBase:
         return docs
 
     def draft(self, cluster_id: str, question: str, k: int = 4) -> DraftResponse:
-        assert self._store is not None and self._chain is not None, "KB not loaded"
+        assert self._store is not None, "KB not loaded"
         hits = self._store.similarity_search(question, k=k)
         context = "\n\n".join(f"[{d.metadata.get('source')}] {d.page_content}" for d in hits)
-        answer = self._chain.invoke({"question": question, "context": context})
+        answer = self._get_chain().invoke({"question": question, "context": context})
         citations = [
             Citation(source=d.metadata.get("source", "unknown"), snippet=d.page_content[:180])
             for d in hits

@@ -56,6 +56,12 @@
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <dependency>
+            <!-- Embedded DB for local runs (SPRING_PROFILES_ACTIVE=local): no Postgres needed. -->
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
 
         <!-- JWT -->
         <dependency>
