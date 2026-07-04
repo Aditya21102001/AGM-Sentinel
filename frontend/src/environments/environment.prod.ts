@@ -1,7 +1,6 @@
-// Production (Vercel). Replace with your Koyeb backend URL before deploying,
-// or wire these from Vercel env vars at build time.
+// Production (Vercel) — points at the deployed Spring Boot backend on Render.
 export const environment = {
   production: true,
-  apiBase: 'https://YOUR-BACKEND.koyeb.app',
-  wsUrl: 'https://YOUR-BACKEND.koyeb.app/ws',
+  apiBase: 'https://agm-sentinel.onrender.com',
+  wsUrl: 'https://agm-sentinel.onrender.com/ws',
 };
