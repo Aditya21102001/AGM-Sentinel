@@ -55,9 +55,29 @@ Do it in this order — each step produces a URL/secret the next step needs.
    | `SPRING_DATASOURCE_PASSWORD` | Neon password |
    | `AI_SERVICE_URL` | `https://<you>-agm-sentinel-ai.hf.space` |
    | `JWT_SECRET` | a long random string |
+   | `APP_FRONTEND_URL` | your Vercel URL, e.g. `https://<app>.vercel.app` (for the Google redirect back) |
    | `PORT` | `8080` |
 4. Expose port `8080`, health check path `/actuator/health`. Deploy.
 5. Note the URL: `https://<app>-<you>.koyeb.app`.
+
+### 3a. (Optional) Enable "Sign in with Google" + real Email/SMS OTP
+
+**Google login** — create an OAuth client at https://console.cloud.google.com (free, no card):
+- OAuth consent screen → *External*; Credentials → *OAuth client ID* → *Web application*.
+- Authorized redirect URI: `https://<app>-<you>.koyeb.app/login/oauth2/code/google`
+- Add these backend env vars:
+
+  | Key | Value |
+  |---|---|
+  | `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID` | your OAuth client id |
+  | `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET` | your OAuth secret |
+
+  With these unset, Google login is simply hidden and the app runs normally.
+
+**OTP delivery** — by default OTP runs in **demo mode** (code shown on screen; free, no
+provider). It works as-is for a portfolio demo. To send real messages, set `OTP_DEMO_MODE=false`
+and provide a real `OtpDelivery` bean (e.g. Gmail SMTP for email). Real SMS needs a paid gateway
++ card, so it's left in demo mode by design.
 
 ---
 

@@ -37,6 +37,7 @@ public class AuthService {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final WebAuthnService webAuthn;   // for listing/counting passkeys as an MFA method
+    private final OtpService otp;             // passwordless email/SMS OTP login
 
     private final SecretGenerator secretGenerator = new DefaultSecretGenerator();
     private final CodeVerifier codeVerifier =
@@ -44,21 +45,59 @@ public class AuthService {
     private final TimeProvider timeProvider = new SystemTimeProvider();
 
     public AuthService(AppUserRepository users, PasswordEncoder encoder,
-                       JwtService jwt, WebAuthnService webAuthn) {
+                       JwtService jwt, WebAuthnService webAuthn, OtpService otp) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
         this.webAuthn = webAuthn;
+        this.otp = otp;
+    }
+
+    // ---- passwordless OTP login (email / SMS) -------------------------------
+
+    public OtpRequestResult otpRequest(String channel, String destination) {
+        String demoCode = otp.request(channel, destination);
+        return new OtpRequestResult(true, demoCode);
+    }
+
+    public TokenResponse otpVerify(String channel, String destination, String code) {
+        AppUser user = otp.verify(channel, destination, code);
+        return new TokenResponse(jwt.issue(user.getUsername(), user.getRole()));
+    }
+
+    /** Find-or-create a user from a verified Google (OAuth2) identity and issue a token. */
+    public String oauthLogin(String email, String displayName) {
+        AppUser user = users.findByEmail(email).orElseGet(() -> {
+            String base = (displayName != null && !displayName.isBlank() ? displayName : email);
+            AppUser u = new AppUser(uniqueUsername(base), email, null, "MODERATOR");
+            return users.save(u);
+        });
+        return jwt.issue(user.getUsername(), user.getRole());
+    }
+
+    private String uniqueUsername(String base) {
+        String candidate = base.replaceAll("[^a-zA-Z0-9._+-]", "").toLowerCase();
+        if (candidate.length() < 3) candidate = "user-" + candidate;
+        while (users.existsByUsername(candidate)) candidate = candidate + (int) (Math.random() * 10);
+        return candidate;
     }
 
     // ---- registration & password login --------------------------------------
 
     public LoginResult register(RegisterRequest req) {
+        String email = Contacts.email(req.email());
+        String phone = Contacts.phone(req.phone());
         if (users.existsByUsername(req.username())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already taken.");
         }
-        AppUser user = new AppUser(
-                req.username(), req.email(), encoder.encode(req.password()), "MODERATOR");
+        if (users.findByEmail(email).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered.");
+        }
+        if (users.findByPhone(phone).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Mobile number already registered.");
+        }
+        AppUser user = new AppUser(req.username(), email, encoder.encode(req.password()), "MODERATOR");
+        user.setPhone(phone);
         users.save(user);
         // Fresh account has no second factor yet → straight to a full token.
         return new LoginResult("AUTHENTICATED", jwt.issue(user.getUsername(), user.getRole()), null, null);

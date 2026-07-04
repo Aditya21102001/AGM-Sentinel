@@ -13,6 +13,8 @@ export interface LoginResult {
 }
 export interface MfaStatus { pin: boolean; totp: boolean; webauthn: boolean; }
 export interface TotpInit { secret: string; qrDataUri: string; otpauthUri: string; }
+export interface AuthConfig { googleEnabled: boolean; otpDemoMode: boolean; }
+export interface OtpRequestResult { sent: boolean; demoCode: string | null; }
 
 /**
  * Authentication + MFA client. Owns the session (token/role/username as signals, persisted
@@ -61,14 +63,32 @@ export class AuthService {
   }
 
   // ---- register / password login -----------------------------------------
-  register(username: string, email: string, password: string): Observable<LoginResult> {
-    return this.http.post<LoginResult>(`${this.base}/api/auth/register`, { username, email, password });
+  register(username: string, email: string, phone: string, password: string): Observable<LoginResult> {
+    return this.http.post<LoginResult>(`${this.base}/api/auth/register`, { username, email, phone, password });
   }
   login(username: string, password: string): Observable<LoginResult> {
     return this.http.post<LoginResult>(`${this.base}/api/auth/login`, { username, password });
   }
   verifyCode(mfaToken: string, method: 'pin' | 'totp', code: string): Observable<{ token: string }> {
     return this.http.post<{ token: string }>(`${this.base}/api/auth/mfa/verify`, { mfaToken, method, code });
+  }
+
+  // ---- public config (which login methods to show) -----------------------
+  config(): Observable<AuthConfig> {
+    return this.http.get<AuthConfig>(`${this.base}/api/auth/config`);
+  }
+
+  // ---- passwordless OTP login (email / SMS) ------------------------------
+  otpRequest(channel: 'email' | 'sms', destination: string): Observable<OtpRequestResult> {
+    return this.http.post<OtpRequestResult>(`${this.base}/api/auth/otp/request`, { channel, destination });
+  }
+  otpVerify(channel: 'email' | 'sms', destination: string, code: string): Observable<{ token: string }> {
+    return this.http.post<{ token: string }>(`${this.base}/api/auth/otp/verify`, { channel, destination, code });
+  }
+
+  // ---- Google OAuth2 (browser redirects to the backend handshake) --------
+  googleLoginUrl(): string {
+    return `${this.base}/oauth2/authorization/google`;
   }
 
   // ---- enrollment (needs a full access token) ----------------------------

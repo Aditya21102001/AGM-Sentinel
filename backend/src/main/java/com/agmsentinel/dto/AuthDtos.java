@@ -25,6 +25,8 @@ public final class AuthDtos {
             @Size(min = 3, max = 40, message = "Username must be 3–40 characters") String username,
             @NotBlank(message = "Email is required")
             @Email(message = "Enter a valid email address") String email,
+            @NotBlank(message = "Mobile number is required")
+            @Pattern(regexp = "^[+]?[0-9 ()-]{7,20}$", message = "Enter a valid mobile number") String phone,
             @NotBlank(message = "Password is required")
             @Size(min = 8, max = 100, message = "Password must be at least 8 characters") String password) { }
 
@@ -57,4 +59,20 @@ public final class AuthDtos {
     public record TokenResponse(String token) { }
 
     public record MfaStatus(boolean pin, boolean totp, boolean webauthn) { }
+
+    // ---- passwordless OTP login (email / SMS) -------------------------------
+    public record OtpRequestReq(
+            @NotBlank String channel,          // "email" | "sms"
+            @NotBlank String destination) { }  // the email address or phone number
+
+    /** demoCode is non-null only in demo mode (no real email/SMS provider configured). */
+    public record OtpRequestResult(boolean sent, String demoCode) { }
+
+    public record OtpVerifyReq(
+            @NotBlank String channel,
+            @NotBlank String destination,
+            @NotBlank String code) { }
+
+    // ---- public client config (which login methods to show) -----------------
+    public record AuthConfig(boolean googleEnabled, boolean otpDemoMode) { }
 }

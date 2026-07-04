@@ -5,12 +5,12 @@
 ❯ Building...
 ✔ Building...
 Initial chunk files | Names         |  Raw size | Estimated transfer size
-main-2IMNYDAX.js    | main          | 387.63 kB |               102.83 kB
-styles-TNCBUXQ7.css | styles        |   1.31 kB |               494 bytes
+main-QRXYKSGI.js    | main          | 392.76 kB |               103.89 kB
+styles-YL233TEY.css | styles        |   1.51 kB |               550 bytes
 
-                    | Initial total | 388.94 kB |               103.33 kB
+                    | Initial total | 394.26 kB |               104.44 kB
 
-Application bundle generation complete. [15.562 seconds] - 2026-07-04T08:51:30.848Z
+Application bundle generation complete. [35.915 seconds] - 2026-07-04T10:59:26.735Z
 
 Output location: F:\UniquePersonalProject\frontend\dist\agm-sentinel-frontend
 

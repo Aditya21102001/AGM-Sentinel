@@ -127,6 +127,39 @@ factor. All factors run locally — no external service.
 
 > Local data is in-memory H2, so accounts reset when the backend restarts.
 
+### 3.2 Passwordless sign-in — Email OTP, Mobile OTP, Google
+
+On the **Moderator login** page, under *"Or sign in with"*:
+
+- **✉️ Email one-time code** — enter an email → *Send code*. In **demo mode** (the default,
+  free, no email provider) the 6-digit code is **shown right on the screen** (and logged by the
+  backend). Enter it → you're signed in. A user is auto-created for that email.
+- **📱 Mobile one-time code** — same flow with a phone number. Real SMS costs money and needs a
+  gateway + card, so this stays in **demo mode** (code shown on screen). The flow is identical
+  to a real one; only delivery differs.
+- **🔵 Sign in with Google** — hidden until you configure Google credentials (see §4.1).
+
+> **Demo mode** is controlled by `otp.demo-mode` (default `true`). Set `OTP_DEMO_MODE=false`
+> and provide a real `OtpDelivery` bean to actually send email/SMS.
+
+### 4.1 Enable "Sign in with Google" (optional, free)
+
+1. Go to **https://console.cloud.google.com** → create a project (free, no card).
+2. **APIs & Services → OAuth consent screen** → *External* → fill app name + your email → save.
+3. **Credentials → Create Credentials → OAuth client ID** → *Web application*.
+4. **Authorized redirect URIs** → add `http://localhost:8080/login/oauth2/code/google`
+   (for production also add `https://<your-backend>/login/oauth2/code/google`).
+5. Copy the **Client ID** and **Client secret**, then restart the backend with them set:
+```powershell
+cd f:\UniquePersonalProject\backend
+$env:SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID = "<client-id>"
+$env:SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET = "<secret>"
+java -Xmx512m -jar target\backend-1.0.0.jar --spring.profiles.active=local
+```
+The **Sign in with Google** button now appears. After Google verifies you, the backend issues
+a JWT and bounces you back to the app, signed in. With the vars **unset**, Google is simply
+hidden and everything else works.
+
 ### Seed the board with ~25 realistic questions (optional, great for a demo)
 With all three services running:
 ```powershell

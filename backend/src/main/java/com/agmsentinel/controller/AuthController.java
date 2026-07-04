@@ -4,6 +4,7 @@ import com.agmsentinel.dto.AuthDtos.*;
 import com.agmsentinel.security.JwtService;
 import com.agmsentinel.service.AuthService;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,9 +21,20 @@ public class AuthController {
     private final AuthService auth;
     private final JwtService jwt;
 
+    @Value("${spring.security.oauth2.client.registration.google.client-id:}")
+    private String googleClientId;
+    @Value("${otp.demo-mode:true}")
+    private boolean otpDemoMode;
+
     public AuthController(AuthService auth, JwtService jwt) {
         this.auth = auth;
         this.jwt = jwt;
+    }
+
+    /** Tells the SPA which login methods to show (Google button, OTP demo hint). */
+    @GetMapping("/config")
+    public AuthConfig config() {
+        return new AuthConfig(googleClientId != null && !googleClientId.isBlank(), otpDemoMode);
     }
 
     // ---- attendee (anonymous) ----------------------------------------------
@@ -45,6 +57,17 @@ public class AuthController {
     @PostMapping("/mfa/verify")
     public TokenResponse verifyMfa(@Valid @RequestBody MfaVerifyRequest req) {
         return auth.verifyMfa(req);
+    }
+
+    // ---- passwordless OTP login (email / SMS) -------------------------------
+    @PostMapping("/otp/request")
+    public OtpRequestResult otpRequest(@Valid @RequestBody OtpRequestReq req) {
+        return auth.otpRequest(req.channel(), req.destination());
+    }
+
+    @PostMapping("/otp/verify")
+    public TokenResponse otpVerify(@Valid @RequestBody OtpVerifyReq req) {
+        return auth.otpVerify(req.channel(), req.destination(), req.code());
     }
 
     // ---- enrollment (requires a full access token) --------------------------
