@@ -55,12 +55,14 @@ public class OtpService {
         String code = String.format("%06d", random.nextInt(1_000_000));
         store.put(key(channel, destination), new Otp(code, Instant.now().plusSeconds(ttlSeconds)));
 
-        if (demoMode) {
-            log.info("[OTP demo] {} code for {} = {}", channel, destination, code);
-            return code;                       // surfaced to the UI in demo mode
+        // Try real delivery (e.g. SMS via TextBelt/Fast2SMS) unless demo mode is forced. If the
+        // message really goes out, the code is hidden. Otherwise (no provider, send failed, or
+        // demo mode) fall back to showing the code in the API response.
+        if (!demoMode && delivery.send(channel, destination, code)) {
+            return null;
         }
-        delivery.send(channel, destination, code);
-        return null;
+        log.info("[OTP demo] {} code for {} = {}", channel, destination, code);
+        return code;
     }
 
     /** Verify a code and return the registered user it belongs to. */

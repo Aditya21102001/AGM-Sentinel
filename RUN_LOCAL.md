@@ -134,13 +134,13 @@ On the **Moderator login** page, under *"Or sign in with"*:
 - **✉️ Email one-time code** — enter an email → *Send code*. In **demo mode** (the default,
   free, no email provider) the 6-digit code is **shown right on the screen** (and logged by the
   backend). Enter it → you're signed in. A user is auto-created for that email.
-- **📱 Mobile one-time code** — same flow with a phone number. Real SMS costs money and needs a
-  gateway + card, so this stays in **demo mode** (code shown on screen). The flow is identical
-  to a real one; only delivery differs.
+- **📱 Mobile one-time code** — same flow with a phone number. In demo mode the code is shown on
+  screen; configure an SMS provider (see §4.2) to send a **real text** instead.
 - **🔵 Sign in with Google** — hidden until you configure Google credentials (see §4.1).
 
-> **Demo mode** is controlled by `otp.demo-mode` (default `true`). Set `OTP_DEMO_MODE=false`
-> and provide a real `OtpDelivery` bean to actually send email/SMS.
+> **Demo mode** is controlled by `otp.demo-mode` (default `true`) — codes are shown on screen so
+> everything works free with no provider. Set `OTP_DEMO_MODE=false` + an SMS provider (§4.2) to
+> send real texts; email OTP has no wired provider, so it always falls back to demo (code shown).
 
 ### 4.1 Enable "Sign in with Google" (optional, free)
 
@@ -159,6 +159,35 @@ java -Xmx512m -jar target\backend-1.0.0.jar --spring.profiles.active=local
 The **Sign in with Google** button now appears. After Google verifies you, the backend issues
 a JWT and bounces you back to the app, signed in. With the vars **unset**, Google is simply
 hidden and everything else works.
+
+### 4.2 Enable real mobile SMS OTP (optional)
+
+Mobile OTP shows the code on screen in demo mode. To send a **real text**, set an SMS provider.
+Two free-ish, no-card options:
+
+**TextBelt** — global, **1 free SMS/day** with the shared key (no signup). Mostly US/Canada; may
+not deliver to +91 India numbers.
+```powershell
+cd f:\UniquePersonalProject\backend
+$env:OTP_DEMO_MODE = "false"
+$env:OTP_SMS_PROVIDER = "textbelt"
+$env:OTP_SMS_API_KEY = "textbelt"
+java -Xmx512m -jar target\backend-1.0.0.jar --spring.profiles.active=local
+```
+
+**Fast2SMS** — India 🇮🇳, free signup at https://www.fast2sms.com (no card; small top-up via UPI
+if you run out of free credits). Get your key from the **Dev API** section.
+```powershell
+$env:OTP_DEMO_MODE = "false"
+$env:OTP_SMS_PROVIDER = "fast2sms"
+$env:OTP_SMS_API_KEY = "<your-fast2sms-key>"
+java -Xmx512m -jar target\backend-1.0.0.jar --spring.profiles.active=local
+```
+
+Register with your **real mobile number**, then use **📱 Mobile one-time code** — the code
+arrives as a text and is no longer shown on screen. If sending fails or the provider is unset,
+it safely falls back to demo mode. (No SMS gateway offers unlimited real texts to any number for
+free without a card — these are the closest.)
 
 ### Seed the board with ~25 realistic questions (optional, great for a demo)
 With all three services running:

@@ -56,35 +56,47 @@ class OnlineClusterer:
         self._lock = threading.Lock()
 
     def assign(self, text: str, embedding: list[float], weight: float = 0.0) -> ClusterResult:
+        """Place one question into a cluster (existing or new) and return the outcome.
+
+        `text`      : the raw question (kept as the cluster's representative if it's new).
+        `embedding` : the question's 384-dim vector (already L2-normalized by the embedder).
+        `weight`    : the asker's shareholder weight (0..1), accumulated for ranking.
+        """
         vec = np.asarray(embedding, dtype=np.float32)
+        # Lock: many web requests hit this concurrently and mutate shared cluster state.
         with self._lock:
+            # 1) Find the single most similar existing cluster (linear scan over centroids).
             best_id, best_sim = None, -1.0
             for cid, cluster in self._clusters.items():
                 sim = cosine(vec, cluster.centroid)
                 if sim > best_sim:
                     best_id, best_sim = cid, sim
 
+            # 2) Close enough to an existing topic? Fold it in (this is the dedup step).
             if best_id is not None and best_sim >= self._threshold:
                 cluster = self._clusters[best_id]
-                # Incremental centroid update (running mean), then re-normalize.
+                # Update the centroid as a running mean of all member vectors:
+                #   new_centroid = (old_centroid * n + new_vec) / (n + 1)
+                # then re-normalize so future cosine comparisons stay on the unit sphere.
                 n = cluster.size
                 cluster.centroid = (cluster.centroid * n + vec) / (n + 1)
                 norm = np.linalg.norm(cluster.centroid)
                 if norm > 0:
                     cluster.centroid /= norm
-                cluster.size += 1
-                cluster.weight_sum += weight
+                cluster.size += 1              # one more person asked this
+                cluster.weight_sum += weight   # accumulate their equity weight
                 return ClusterResult(cluster=cluster, is_new=False, similarity=best_sim)
 
-            # No close cluster → new topic.
+            # 3) Nothing similar enough → this is a brand-new topic; seed a cluster with it.
             cluster = Cluster(
                 cluster_id=str(uuid.uuid4()),
                 representative_question=text,
-                centroid=vec,
+                centroid=vec,                  # the seed vector IS the initial centroid
                 size=1,
                 weight_sum=weight,
             )
             self._clusters[cluster.cluster_id] = cluster
+            # similarity reported as the best we saw (0 if this is the very first cluster).
             return ClusterResult(cluster=cluster, is_new=True, similarity=best_sim if best_id else 0.0)
 
     def top(self, n: int = 20) -> list[Cluster]:

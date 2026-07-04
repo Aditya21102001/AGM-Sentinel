@@ -126,11 +126,18 @@ class KnowledgeBase:
         }
 
     def draft(self, cluster_id: str, question: str, k: int = 4) -> DraftResponse:
+        """The RAG step: retrieve → augment → generate a grounded, cited answer.
+
+        1. RETRIEVE the k report chunks most semantically similar to the question (vector search).
+        2. AUGMENT: stitch those chunks (with their source tags) into a context block.
+        3. GENERATE: the LLM chain answers strictly from that context (see the prompt).
+        4. Attach the retrieved chunks as citations so the moderator can verify the source.
+        """
         assert self._store is not None, "KB not loaded"
-        hits = self._store.similarity_search(question, k=k)
-        context = "\n\n".join(f"[{d.metadata.get('source')}] {d.page_content}" for d in hits)
-        answer = self._get_chain().invoke({"question": question, "context": context})
-        citations = [
+        hits = self._store.similarity_search(question, k=k)          # 1) top-k nearest chunks
+        context = "\n\n".join(f"[{d.metadata.get('source')}] {d.page_content}" for d in hits)  # 2)
+        answer = self._get_chain().invoke({"question": question, "context": context})          # 3)
+        citations = [                                                # 4) source + snippet per chunk
             Citation(source=d.metadata.get("source", "unknown"), snippet=d.page_content[:180])
             for d in hits
         ]

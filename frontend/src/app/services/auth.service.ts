@@ -106,17 +106,32 @@ export class AuthService {
   }
 
   // ---- WebAuthn passkey (biometric) --------------------------------------
+
+  /**
+   * Enroll a passkey for the logged-in user (registration ceremony):
+   * 1. ask the backend for creation options (challenge, rp, user, algorithms);
+   * 2. startRegistration() triggers the device authenticator (Windows Hello / Touch ID) to
+   *    create a key pair — the private key + biometric NEVER leave the device;
+   * 3. send the resulting public-key credential back so the backend stores the PUBLIC key.
+   */
   async enrollPasskey(): Promise<void> {
     const optionsText = await firstValueFrom(
       this.http.post(`${this.base}/api/auth/enroll/webauthn/start`, {}, {
         headers: this.authHeaders(), responseType: 'text',
       }));
+    // Yubico wraps the options as { publicKey: {...} }; @simplewebauthn wants the inner object.
     const options = JSON.parse(optionsText);
     const attResp = await startRegistration({ optionsJSON: options.publicKey });
     await firstValueFrom(this.http.post(`${this.base}/api/auth/enroll/webauthn/finish`,
       { credential: attResp }, { headers: this.authHeaders() }));
   }
 
+  /**
+   * Log in with a passkey (assertion ceremony), used as an MFA second factor:
+   * 1. get an assertion challenge for the pending MFA session;
+   * 2. startAuthentication() has the device sign the challenge after a local biometric check;
+   * 3. the backend verifies the signature against the stored public key and returns a full token.
+   */
   async loginPasskey(mfaToken: string): Promise<string> {
     const optionsText = await firstValueFrom(
       this.http.post(`${this.base}/api/auth/mfa/webauthn/start`, { mfaToken }, { responseType: 'text' }));
@@ -132,6 +147,9 @@ export class AuthService {
   private decodeSubject(token: string): string | null { return this.claim(token, 'sub'); }
   private claim(token: string, name: string): string | null {
     try {
+      // A JWT is header.payload.signature (base64url). Decode the middle segment's JSON to read
+      // a claim (e.g. role/sub). base64url → base64 (swap -/_ ) before atob. This is for UI
+      // convenience only — the server re-verifies the signature; the client never trusts this.
       const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
       return payload[name] ?? null;
     } catch {

@@ -103,24 +103,41 @@ public class AuthService {
         return new LoginResult("AUTHENTICATED", jwt.issue(user.getUsername(), user.getRole()), null, null);
     }
 
+    /**
+     * Stage 1 of login: verify the password. If the user has no second factor, return a full
+     * access token immediately. Otherwise return ONLY a short-lived MFA-challenge token plus the
+     * list of factors they can use — no access is granted until stage 2 (verifyMfa) succeeds.
+     */
     public LoginResult login(LoginRequest req) {
+        // BCrypt.matches re-hashes the input with the stored salt and compares — constant-time,
+        // never decrypts. Same generic error whether the user or the password is wrong (avoids
+        // leaking which usernames exist).
         AppUser user = users.findByUsername(req.username())
                 .filter(u -> encoder.matches(req.password(), u.getPasswordHash()))
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED, "Invalid username or password."));
 
+        // No PIN/TOTP and no passkey enrolled → single-factor is all they set up → full token.
         if (!user.isMfaEnabled() && !webAuthn.hasCredentials(user)) {
             return new LoginResult("AUTHENTICATED", jwt.issue(user.getUsername(), user.getRole()), null, null);
         }
+        // MFA enrolled → hand back a challenge token (typ=mfa, no role) + the available methods.
         List<String> methods = enrolledMethods(user);
         return new LoginResult("MFA_REQUIRED", null, jwt.issueMfaChallenge(user.getUsername()), methods);
     }
 
-    /** Exchange a valid MFA challenge + correct PIN/TOTP code for a full access token. */
+    /**
+     * Stage 2 of login: exchange a valid MFA challenge + a correct PIN/TOTP code for a full
+     * access token. (Passkey/WebAuthn assertion is handled separately in webAuthnLoginFinish.)
+     */
     public TokenResponse verifyMfa(MfaVerifyRequest req) {
+        // Re-derive the user from the challenge token (also proves the token is a valid, unexpired
+        // typ=mfa token issued in stage 1) — the client can't just name any user here.
         AppUser user = requireChallengeUser(req.mfaToken());
         boolean ok = switch (req.method().toLowerCase()) {
+            // PIN: BCrypt-compare against the stored hash.
             case "pin" -> user.getPinHash() != null && encoder.matches(req.code(), user.getPinHash());
+            // TOTP: recompute the expected time-based code from the shared secret and compare.
             case "totp" -> user.isTotpEnabled() && codeVerifier.isValidCode(user.getTotpSecret(), req.code());
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown MFA method.");
         };

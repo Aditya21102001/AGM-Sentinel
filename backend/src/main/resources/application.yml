@@ -40,6 +40,13 @@ app:
 otp:
   demo-mode: ${OTP_DEMO_MODE:true}
   ttl-seconds: 300
+  # Real SMS delivery. Leave provider empty → demo (code shown on screen). To send real texts:
+  #   OTP_DEMO_MODE=false, OTP_SMS_PROVIDER=textbelt|fast2sms, OTP_SMS_API_KEY=<key>
+  #   textbelt: use key "textbelt" for 1 free SMS/day (global, no signup).
+  #   fast2sms: free India signup, get your API key from the dashboard.
+  sms:
+    provider: ${OTP_SMS_PROVIDER:}
+    api-key: ${OTP_SMS_API_KEY:}
 
 # WebAuthn (passkeys). rp-id + origins MUST match the FRONTEND domain (where the browser runs
 # the ceremony). Defaults are for local dev; set env vars in prod to the Vercel domain, e.g.

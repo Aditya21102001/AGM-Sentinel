@@ -75,9 +75,17 @@ Do it in this order — each step produces a URL/secret the next step needs.
   With these unset, Google login is simply hidden and the app runs normally.
 
 **OTP delivery** — by default OTP runs in **demo mode** (code shown on screen; free, no
-provider). It works as-is for a portfolio demo. To send real messages, set `OTP_DEMO_MODE=false`
-and provide a real `OtpDelivery` bean (e.g. Gmail SMTP for email). Real SMS needs a paid gateway
-+ card, so it's left in demo mode by design.
+provider). To send **real mobile SMS**, set these backend env vars:
+
+  | Key | Value |
+  |---|---|
+  | `OTP_DEMO_MODE` | `false` |
+  | `OTP_SMS_PROVIDER` | `textbelt` (global, 1 free SMS/day) or `fast2sms` (India, free signup) |
+  | `OTP_SMS_API_KEY` | `textbelt` for the free shared key, or your Fast2SMS API key |
+
+  With these unset, mobile OTP falls back to demo (code shown). Email OTP has no wired provider,
+  so it always shows the code. No SMS gateway is unlimited-free without a card — TextBelt (1/day)
+  and Fast2SMS (India, UPI top-up) are the closest.
 
 ---
 
