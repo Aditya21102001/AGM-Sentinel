@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { RouterLink, RouterLinkActive, RouterOutlet, Router } from '@angular/router';
+import { AuthService } from './services/auth.service';
 
 @Component({
   selector: 'app-root',
@@ -11,8 +12,23 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
       <a routerLink="/ask" routerLinkActive="active">Ask a question</a>
       <a routerLink="/board" routerLinkActive="active">Moderator board</a>
       <a routerLink="/setup" routerLinkActive="active">Setup</a>
+      <span style="flex:1"></span>
+      @if (auth.isAuthenticated()) {
+        <a routerLink="/security" routerLinkActive="active">Security</a>
+        <span class="muted">{{ auth.username() }}</span>
+        <a style="cursor:pointer" (click)="logout()">Logout</a>
+      } @else {
+        <a routerLink="/login" routerLinkActive="active">Moderator login</a>
+      }
     </nav>
     <router-outlet></router-outlet>
   `,
 })
-export class AppComponent {}
+export class AppComponent {
+  constructor(public auth: AuthService, private router: Router) {}
+
+  logout(): void {
+    this.auth.logout();
+    this.router.navigate(['/login']);
+  }
+}

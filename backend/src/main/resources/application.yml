@@ -25,6 +25,15 @@ jwt:
   secret: ${JWT_SECRET:change-me-to-a-long-random-string-in-prod-please}
   ttl-seconds: 28800
 
+# WebAuthn (passkeys). rp-id + origins MUST match the FRONTEND domain (where the browser runs
+# the ceremony). Defaults are for local dev; set env vars in prod to the Vercel domain, e.g.
+#   WEBAUTHN_RP_ID=agm-sentinel-xxxx.vercel.app
+#   WEBAUTHN_ORIGINS=https://agm-sentinel-xxxx.vercel.app
+webauthn:
+  rp-id: ${WEBAUTHN_RP_ID:localhost}
+  rp-name: ${WEBAUTHN_RP_NAME:AGM Sentinel}
+  origins: ${WEBAUTHN_ORIGINS:http://localhost:4200}
+
 board:
   refresh-ms: 10000
 

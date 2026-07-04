@@ -61,12 +61,9 @@ export class ModeratorComponent implements OnInit, OnDestroy {
   constructor(private api: ApiService, protected board: BoardService) {}
 
   ngOnInit(): void {
-    // Moderator needs a MODERATOR-role token to hit /api/clusters.
-    this.api.login('moderator-1', 'MODERATOR').subscribe((r) => {
-      this.api.setToken(r.token);
-      this.api.getBoard().subscribe((b) => this.board.board.set(b)); // initial snapshot
-      this.board.connect();                                          // then live pushes
-    });
+    // Token is already set by AuthService — the route guard ensures a logged-in moderator.
+    this.api.getBoard().subscribe((b) => this.board.board.set(b)); // initial snapshot
+    this.board.connect();                                          // then live pushes
   }
 
   /** Build the page-anchored PDF link for a citation source string. */

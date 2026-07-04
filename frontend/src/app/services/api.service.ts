@@ -49,11 +49,11 @@ export class ApiService {
 
   constructor(private http: HttpClient) {}
 
-  /** Grab a demo JWT for the given role so protected endpoints work. */
-  login(username: string, role: 'ATTENDEE' | 'MODERATOR'): Observable<{ token: string }> {
+  /** Anonymous attendee token (no password) — attendees just join and submit. */
+  attendeeLogin(username: string): Observable<{ token: string }> {
     return this.http.post<{ token: string }>(
-      `${environment.apiBase}/api/auth/login`,
-      { username, role },
+      `${environment.apiBase}/api/auth/attendee`,
+      { username },
     );
   }
 

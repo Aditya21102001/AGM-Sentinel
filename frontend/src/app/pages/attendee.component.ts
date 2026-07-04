@@ -58,7 +58,7 @@ export class AttendeeComponent implements OnInit {
   constructor(private api: ApiService) {}
 
   ngOnInit(): void {
-    this.api.login(this.attendeeId, 'ATTENDEE').subscribe((r) => this.api.setToken(r.token));
+    this.api.attendeeLogin(this.attendeeId).subscribe((r) => this.api.setToken(r.token));
   }
 
   submit(): void {

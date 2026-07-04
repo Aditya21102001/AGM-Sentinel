@@ -66,11 +66,8 @@ export class AdminComponent implements OnInit {
   constructor(private api: ApiService) {}
 
   ngOnInit(): void {
-    // Setup is a moderator action -> needs a MODERATOR token.
-    this.api.login('setup-admin', 'MODERATOR').subscribe((r) => {
-      this.api.setToken(r.token);
-      this.refreshStatus();
-    });
+    // Token is already set by AuthService — the route guard ensures a logged-in moderator.
+    this.refreshStatus();
   }
 
   private refreshStatus(): void {

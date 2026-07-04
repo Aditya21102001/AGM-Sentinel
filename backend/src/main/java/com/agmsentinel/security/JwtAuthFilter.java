@@ -32,10 +32,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             try {
                 Claims claims = jwt.parse(header.substring(7));
-                var authority = new SimpleGrantedAuthority("ROLE_" + claims.get("role", String.class));
-                var auth = new UsernamePasswordAuthenticationToken(
-                        claims.getSubject(), null, List.of(authority));
-                SecurityContextHolder.getContext().setAuthentication(auth);
+                String role = claims.get("role", String.class);
+                // Only FULL access tokens authenticate. MFA-challenge tokens (typ=mfa, no role)
+                // must never grant access — they only authorize the second-factor step.
+                if (!jwt.isMfaChallenge(claims) && role != null) {
+                    var authority = new SimpleGrantedAuthority("ROLE_" + role);
+                    var auth = new UsernamePasswordAuthenticationToken(
+                            claims.getSubject(), null, List.of(authority));
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
             } catch (Exception ignored) {
                 // Invalid token → stays unauthenticated; protected routes will 401.
             }

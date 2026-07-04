@@ -105,8 +105,27 @@ Wait for `Application bundle generation complete`, then open **http://localhost:
 1. Open **http://localhost:4200** → **Ask a question** tab.
 2. Submit a few paraphrases of the same question, e.g.
    *"When will the dividend be paid?"* and *"What is the dividend payment date?"*
-3. Open the **Moderator board** tab → the paraphrases collapse into **one cluster** whose
-   count climbs. Different questions form new topics. The board updates live over WebSocket.
+3. The **Moderator board** and **Setup** tabs now require a signed-in moderator (see §3.1).
+   Once signed in, the paraphrases collapse into **one cluster** whose count climbs; different
+   questions form new topics. The board updates live over WebSocket.
+
+### 3.1 Moderator sign-in & Multi-Factor Authentication (MFA)
+
+Attendees stay anonymous, but moderators log in with a password and (optionally) a second
+factor. All factors run locally — no external service.
+
+1. Click **Moderator login** → **New moderator? Register** → create a username + password.
+   You're signed straight in (no MFA enrolled yet).
+2. Go to the **Security** tab and enroll any of:
+   - **PIN** — a 4–8 digit code.
+   - **Authenticator (OTP)** — click *Set up authenticator*, scan the QR in Google
+     Authenticator / Authy, enter the 6-digit code to enable.
+   - **Passkey / biometric** — click *Add passkey*, approve with Windows Hello / fingerprint.
+     (Works on `localhost` over HTTP by browser rule.)
+3. Click **Logout**, then **Moderator login** again → after the password, it now demands your
+   **second factor** (choose PIN, OTP code, or passkey). On success you reach the board.
+
+> Local data is in-memory H2, so accounts reset when the backend restarts.
 
 ### Seed the board with ~25 realistic questions (optional, great for a demo)
 With all three services running:
@@ -119,8 +138,8 @@ clusters.
 
 ### End-to-end check via curl (no browser)
 ```powershell
-# login as attendee -> get JWT, submit a question
-$tok = (curl -s -X POST http://127.0.0.1:8080/api/auth/login -H "Content-Type: application/json" -d '{\"username\":\"a1\",\"role\":\"ATTENDEE\"}' | ConvertFrom-Json).token
+# get an anonymous attendee JWT, then submit a question
+$tok = (curl -s -X POST http://127.0.0.1:8080/api/auth/attendee -H "Content-Type: application/json" -d '{\"username\":\"a1\"}' | ConvertFrom-Json).token
 curl -X POST http://127.0.0.1:8080/api/questions -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d '{\"text\":\"When is the dividend paid?\",\"attendeeId\":\"a1\",\"weight\":0.3}'
 ```
 

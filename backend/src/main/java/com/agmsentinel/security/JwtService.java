@@ -24,18 +24,39 @@ public class JwtService {
         this.ttlSeconds = ttlSeconds;
     }
 
+    /** Full access token — granted only after password (+ MFA, if enrolled) succeeds. */
     public String issue(String subject, String role) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(subject)
                 .claim("role", role)
+                .claim("typ", "access")
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(ttlSeconds)))
                 .signWith(key)
                 .compact();
     }
 
+    /**
+     * Short-lived intermediate token issued after a correct password when the user has MFA.
+     * It grants NO access — it only authorizes completing the second factor.
+     */
+    public String issueMfaChallenge(String subject) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(subject)
+                .claim("typ", "mfa")
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(300)))   // 5 minutes to finish MFA
+                .signWith(key)
+                .compact();
+    }
+
     public Claims parse(String token) {
         return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+    }
+
+    public boolean isMfaChallenge(Claims claims) {
+        return "mfa".equals(claims.get("typ", String.class));
     }
 }

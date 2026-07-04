@@ -30,3 +30,6 @@ Thumbs.db
 # Model + vector caches
 *.faiss
 hf_cache/
+
+# local deployment staging (not part of the app)
+.deploy/

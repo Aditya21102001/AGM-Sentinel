@@ -1,0 +1,16 @@
+
+> agm-sentinel-frontend@1.0.0 build
+> ng build
+
+❯ Building...
+✔ Building...
+Initial chunk files | Names         |  Raw size | Estimated transfer size
+main-2IMNYDAX.js    | main          | 387.63 kB |               102.83 kB
+styles-TNCBUXQ7.css | styles        |   1.31 kB |               494 bytes
+
+                    | Initial total | 388.94 kB |               103.33 kB
+
+Application bundle generation complete. [15.562 seconds] - 2026-07-04T08:51:30.848Z
+
+Output location: F:\UniquePersonalProject\frontend\dist\agm-sentinel-frontend
+
