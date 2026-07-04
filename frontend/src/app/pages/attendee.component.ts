@@ -15,14 +15,15 @@ import { ApiService, IngestResult } from '../services/api.service';
       </p>
 
       <div class="card">
-        <textarea [(ngModel)]="text" rows="3"
+        <textarea [ngModel]="text()" (ngModelChange)="text.set($event)" rows="3"
                   placeholder="e.g. When will this year's dividend be paid?"></textarea>
         <div class="row" style="margin-top:12px">
           <label class="muted" style="flex:1">
             Shareholder weight (0–1)
-            <input type="number" min="0" max="1" step="0.1" [(ngModel)]="weight" />
+            <input type="number" min="0" max="1" step="0.1"
+                   [ngModel]="weight()" (ngModelChange)="weight.set($event)" />
           </label>
-          <button (click)="submit()" [disabled]="!text.trim() || busy()">
+          <button (click)="submit()" [disabled]="!text().trim() || busy()">
             {{ busy() ? 'Sending…' : 'Submit' }}
           </button>
         </div>
@@ -48,8 +49,8 @@ import { ApiService, IngestResult } from '../services/api.service';
   `,
 })
 export class AttendeeComponent implements OnInit {
-  text = '';
-  weight = 0.1;
+  readonly text = signal('');
+  readonly weight = signal(0.1);
   readonly busy = signal(false);
   readonly last = signal<IngestResult | null>(null);
   private attendeeId = 'attendee-' + Math.floor(Math.random() * 1e6);
@@ -62,10 +63,10 @@ export class AttendeeComponent implements OnInit {
 
   submit(): void {
     this.busy.set(true);
-    this.api.submitQuestion(this.text.trim(), this.attendeeId, this.weight).subscribe({
+    this.api.submitQuestion(this.text().trim(), this.attendeeId, this.weight()).subscribe({
       next: (res) => {
         this.last.set(res);
-        this.text = '';
+        this.text.set('');
         this.busy.set(false);
       },
       error: () => {
